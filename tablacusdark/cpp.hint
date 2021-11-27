@@ -1,0 +1,2 @@
+#define TABLACUSDARK_API __declspec(dllexport)
+#define TABLACUSDARK_API __declspec(dllimport)

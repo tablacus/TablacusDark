@@ -1,0 +1,8 @@
+LIBRARY
+
+EXPORTS
+	GetDarkMode
+	SetDarkMode
+	SetPreferredAppMode
+	InitializeWindow
+	FinalizeWindow
