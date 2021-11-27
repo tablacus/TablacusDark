@@ -3,7 +3,7 @@ Tablacus Dark は dll ファイルをLoadLibraryするだけでWindowsのアプ�
 MIT Lisenseなのであなたのアプリに同封して配布することも自由です。
 
 C++でexeとdllの同じフォルダにある場合に以下の様にLoadLibraryするとダイアログのダークモードが有効になります。
-```
+```C++
 	WCHAR pszPath[MAX_PATH];
 	::GetModuleFileName(NULL, pszPath, MAX_PATH);
 	::PathRemoveFileSpec(pszPath);
@@ -44,5 +44,70 @@ ShellAbout
 Property
 
 ![image](https://user-images.githubusercontent.com/5156977/143684155-16fb130c-f0cc-4717-b190-d81f73e26a11.png)
+
+[サンプル実行ファイル](https://github.com/tablacus/TablacusDark/tree/main/test_exe)
+
+![image](https://user-images.githubusercontent.com/5156977/143684389-d347c188-a982-434e-b84a-7b2a880712f5.png)
+
+## Dialog
+基本的なダイアログ
+
+### MessageBox
+MessageBoxを表示します。
+
+### ChooseFont
+フォント選択ダイアログを表示します。
+
+### ChooseColor
+色選択ダイアログを表示します。
+
+### SHBrowseForFolder
+フォルダ選択ダイアログを表示します。
+
+### SHRunDialog
+ファイル名を指定して実行を表示します。
+
+### ShellAbout
+バージョンダイアログを表示します。
+
+### Property
+プロパティを表示します。
+
+## Main Window
+おまけで関数を呼び出すと実行アプリのダークモード化が行えます。
+
+```C++
+typedef void (__stdcall* LPFNEntryPointW)(HWND hwnd, HINSTANCE hinst, LPWSTR lpszCmdLine, int nCmdShow);
+```
+
+### Title bar
+タイトルバーをダークモード対応に変えます。
+
+```C++
+LPFNEntryPointW _SetDarkMode = NULL;
+*(FARPROC *)&_SetDarkMode = GetProcAddress(hDark, "SetDarkMode");
+_SetDarkMode(hWnd, NULL, NULL, -1);
+
+```
+
+### Menu
+メニューとツールチップをダークモード対応に変えます。
+
+```C++
+LPFNEntryPointW _SetAppMode = NULL;
+*(FARPROC *)&_SetAppMode = GetProcAddress(hDark, "SetAppMode");
+_SetAppMode(NULL, NULL, NULL, -1);
+```
+
+### Window (Hook)
+ダイアログと同じようにメインウインドウ側にもダークモード対応にします。
+
+```C++
+LPFNEntryPointW _FixWindow = NULL;
+*(FARPROC *)&_FixWindow = GetProcAddress(hDark, "FixWindow");
+_FixWindow(hWnd, NULL, NULL, 1);
+```
+					
+詳しくは[サンプルプログラム](https://github.com/tablacus/TablacusDark/tree/main/test_exe)のソースをご覧ください。
 
 
