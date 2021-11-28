@@ -17,6 +17,7 @@
 #define DLLEXPORT __pragma(comment(linker, "/EXPORT:" __FUNCTION__ "=" __FUNCDNAME__))
 
 #define TECL_DARKTEXT 0xffffff
+#define TECL_DARKTEXT2 0xe0e0e0
 #define TECL_DARKBG 0x202020
 
 #ifndef PreferredAppMode
@@ -63,7 +64,8 @@ HBRUSH	g_hbrDarkBackground;
 
 BOOL	g_bDarkMode = FALSE;
 BOOL	g_bTooltips = FALSE;
-BOOL	g_bFixOwnerDraw = TRUE;
+BOOL	g_bFixOwnerDrawCB = TRUE;
+BOOL	g_bOwnerDrawTC = TRUE;
 
 BOOL IsHighContrast()
 {
@@ -116,8 +118,8 @@ extern "C" LRESULT CALLBACK ListViewProc(HWND hwnd, UINT msg, WPARAM wParam, LPA
 			}
 			break;
 		case WM_NOTIFY:
-			if (((LPNMHDR)lParam)->code == NM_CUSTOMDRAW) {
-				if (g_bDarkMode) {
+			if (g_bDarkMode) {
+				if (((LPNMHDR)lParam)->code == NM_CUSTOMDRAW) {
 					LPNMCUSTOMDRAW pnmcd = (LPNMCUSTOMDRAW)lParam;
 					if (pnmcd->dwDrawStage == CDDS_PREPAINT) {
 						return CDRF_NOTIFYITEMDRAW;
@@ -127,12 +129,9 @@ extern "C" LRESULT CALLBACK ListViewProc(HWND hwnd, UINT msg, WPARAM wParam, LPA
 						return CDRF_DODEFAULT;
 					}
 				}
-			}
-			if (g_bDarkMode) {
 				DefSubclassProc(hwnd, LVM_SETSELECTEDCOLUMN, -1, 0);
 			}
 			break;
-
 		}
 	} catch (...) {
 	}
@@ -214,6 +213,17 @@ extern "C" void CALLBACK FixChildren(HWND hwnd, HINSTANCE hInstance, LPWSTR lpCm
 					g_umDlgLVProc[hwnd1] = hwnd;
 				}
 				ListView_SetSelectedColumn(hwnd1, -1);
+			}
+		}
+		if (lstrcmpiA(pszClassA, WC_TABCONTROLA) == 0) {
+			if (g_bOwnerDrawTC) {
+				DWORD dwStyle = GetWindowLong(hwnd1, GWL_STYLE);
+				if (g_bDarkMode) {
+					::SetWindowLong(hwnd1, GWL_STYLE, (dwStyle | TCS_OWNERDRAWFIXED));
+					::SetClassLongPtr(hwnd1, GCLP_HBRBACKGROUND, (LONG_PTR)g_hbrDarkBackground);
+				} else {
+					::SetWindowLong(hwnd1, GWL_STYLE, (dwStyle & ~TCS_OWNERDRAWFIXED));
+				}
 			}
 		}
 		FixChildren(hwnd1, hInstance, lpCmdLine, nCmdShow);
@@ -301,8 +311,23 @@ extern "C" LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 					EndPaint(hwnd, &ps);
 				}
 				break;
+			case WM_NOTIFY:
+				if (((LPNMHDR)lParam)->code == NM_CUSTOMDRAW) {
+					if (g_bDarkMode) {
+						LPNMCUSTOMDRAW pnmcd = (LPNMCUSTOMDRAW)lParam;
+						if (pnmcd->dwDrawStage == CDDS_PREPAINT) {
+							return CDRF_NOTIFYITEMDRAW;
+						}
+						if (pnmcd->dwDrawStage == CDDS_ITEMPREPAINT) {
+							SetTextColor(pnmcd->hdc, TECL_DARKTEXT);
+							return CDRF_DODEFAULT;
+						}
+						DefSubclassProc(hwnd, LVM_SETSELECTEDCOLUMN, -1, 0);
+					}
+				}
+				break;
 			case WM_DRAWITEM:
-				if (g_bFixOwnerDraw) {
+				if (g_bFixOwnerDrawCB) {
 					PDRAWITEMSTRUCT pdis;
 					pdis = (PDRAWITEMSTRUCT)lParam;
 					if (pdis->CtlType == ODT_COMBOBOX) {
@@ -366,6 +391,17 @@ extern "C" LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 						DeleteDC(hmdc);
 						DeleteObject(hBM);
 						return lResult;
+					} else if (pdis->CtlType == ODT_TAB) {
+						::FillRect(pdis->hDC, &pdis->rcItem, g_hbrDarkBackground);
+						WCHAR label[64];
+						TC_ITEM tci;
+						tci.mask = TCIF_TEXT;
+						tci.pszText = label;
+						tci.cchTextMax = 63;
+						TabCtrl_GetItem(pdis->hwndItem, pdis->itemID, &tci);
+						SetTextColor(pdis->hDC, (pdis->itemState & (ODS_SELECTED | ODS_HOTLIGHT)) ? TECL_DARKTEXT : TECL_DARKTEXT2);
+						SetBkMode(pdis->hDC, TRANSPARENT);
+						::DrawText(pdis->hDC, label, -1, &pdis->rcItem, DT_HIDEPREFIX | DT_SINGLELINE | DT_CENTER | ((pdis->itemState & ODS_SELECTED) ? DT_VCENTER : DT_BOTTOM));
 					}
 				}
 				break;
@@ -413,7 +449,8 @@ extern "C" void CALLBACK SetAppMode(HWND hwnd, HINSTANCE hInstance, LPWSTR lpCmd
 		}
 	}
 	g_bTooltips = nCmdShow & 2;
-	g_bFixOwnerDraw = nCmdShow & 4;
+	g_bFixOwnerDrawCB = nCmdShow & 4;
+	g_bOwnerDrawTC = nCmdShow & 0x10;
 }
 
 LRESULT CALLBACK CBTProc(int nCode, WPARAM wParam, LPARAM lParam)
