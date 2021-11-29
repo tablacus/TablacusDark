@@ -43,7 +43,7 @@ ShellAbout
 
 Property
 
-![image](https://user-images.githubusercontent.com/5156977/143684155-16fb130c-f0cc-4717-b190-d81f73e26a11.png)
+![image](https://user-images.githubusercontent.com/5156977/143768658-5fa0cf7a-5245-441f-92e5-b7b99a006371.png)
 
 [サンプル実行ファイル](https://github.com/tablacus/TablacusDark/tree/main/test_exe)
 
