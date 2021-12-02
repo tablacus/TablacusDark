@@ -4,10 +4,12 @@
 // Visual Studio 2017 (v141)
 
 #include "pch.h"
+#include "resource.h"
 #include <windowsx.h>
 #include <CommCtrl.h>
 #include <Shlwapi.h>
 #include <Uxtheme.h>
+#include <tchar.h>
 #include <unordered_map>
 #include <vector>
 
@@ -259,10 +261,11 @@ extern "C" void CALLBACK FixChildren(HWND hwnd, HINSTANCE hInstance, LPWSTR lpCm
 		}
 		CHAR pszClassA[MAX_CLASS_NAME];
 		::GetClassNameA(hwnd1, pszClassA, MAX_CLASS_NAME);
-		if (lstrcmpiA(pszClassA, WC_BUTTONA) == 0) {
+		if (::PathMatchSpecA(pszClassA, TWC_BUTTON)) {
 			::SetWindowTheme(hwnd1, g_bDarkMode ? L"darkmode_explorer" : L"explorer", NULL);
 			DWORD dwStyle = GetWindowLong(hwnd1, GWL_STYLE);
-			if ((dwStyle & BS_TYPEMASK) > BS_DEFPUSHBUTTON) {
+			DWORD dwButton = dwStyle & BS_TYPEMASK;
+			if (dwButton > BS_DEFPUSHBUTTON && dwButton < BS_OWNERDRAW) {
 				if (g_bDarkMode) {
 					if (!(dwStyle & BS_BITMAP)) {
 						int nLen = ::GetWindowTextLength(hwnd1);
@@ -308,19 +311,15 @@ extern "C" void CALLBACK FixChildren(HWND hwnd, HINSTANCE hInstance, LPWSTR lpCm
 					}
 				}
 			}
-		}
-		if (lstrcmpiA(pszClassA, WC_COMBOBOXA) == 0) {
+		} else if (::PathMatchSpecA(pszClassA, TWC_EDIT ";" TWC_COMBOBOX)) {
 			::SetWindowTheme(hwnd1, g_bDarkMode ? L"darkmode_cfd" : L"cfd", NULL);
-		}
-		if (lstrcmpiA(pszClassA, WC_SCROLLBARA) == 0) {
+		} else if (::PathMatchSpecA(pszClassA, WC_SCROLLBARA)) {
 			::SetWindowTheme(hwnd1, g_bDarkMode ? L"darkmode_explorer" : L"explorer", NULL);
-		}
-		if (lstrcmpiA(pszClassA, WC_TREEVIEWA) == 0) {
+		} else if (::PathMatchSpecA(pszClassA, TWC_TREEVIEW)) {
 			SetWindowTheme(hwnd1, g_bDarkMode ? L"darkmode_explorer" : L"explorer", NULL);
 			TreeView_SetTextColor(hwnd1, g_bDarkMode ? TECL_DARKTEXT : GetSysColor(COLOR_WINDOWTEXT));
 			TreeView_SetBkColor(hwnd1, g_bDarkMode ? TECL_DARKBG : GetSysColor(COLOR_WINDOW));
-		}
-		if (lstrcmpiA(pszClassA, WC_LISTVIEWA) == 0) {
+		} else if (::PathMatchSpecA(pszClassA, TWC_LISTVIEW)) {
 			SetWindowTheme(hwnd1, g_bDarkMode ? L"darkmode_itemsview" : L"explorer", NULL);
 			ListView_SetTextColor(hwnd1, g_bDarkMode ? TECL_DARKTEXT : GetSysColor(COLOR_WINDOWTEXT));
 			ListView_SetTextBkColor(hwnd1, g_bDarkMode ? TECL_DARKBG : GetSysColor(COLOR_WINDOW));
@@ -337,9 +336,8 @@ extern "C" void CALLBACK FixChildren(HWND hwnd, HINSTANCE hInstance, LPWSTR lpCm
 				}
 				ListView_SetSelectedColumn(hwnd1, -1);
 			}
-		}
-		if (lstrcmpiA(pszClassA, WC_TABCONTROLA) == 0) {
-			if (g_bOwnerDrawTC && g_bDarkMode && !(GetWindowLong(hwnd1, GWL_STYLE) & TCS_OWNERDRAWFIXED)) {
+		} else if (::PathMatchSpecA(pszClassA, TWC_TABCONTROL)) {
+			if (g_bOwnerDrawTC && g_bDarkMode) {
 				::SetClassLongPtr(hwnd1, GCLP_HBRBACKGROUND, (LONG_PTR)g_hbrDarkBackground);
 				auto itr = g_umDlgProc.find(hwnd1);
 				if (itr == g_umDlgProc.end()) {
@@ -392,9 +390,9 @@ extern "C" LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 				if (hwnd == itr->second) {
 					CHAR pszClassA[MAX_CLASS_NAME];
 					GetClassNameA(itr->first, pszClassA, MAX_CLASS_NAME);
-					if (lstrcmpiA(pszClassA, WC_LISTVIEWA) == 0) {
+					if (::PathMatchSpecA(pszClassA, TWC_LISTVIEW)) {
 						RemoveWindowSubclass(itr->first, ListViewProc, (UINT_PTR)ListViewProc);
-					} else if (lstrcmpiA(pszClassA, WC_TABCONTROLA) == 0) {
+					} else if (::PathMatchSpecA(pszClassA, TWC_TABCONTROL)) {
 						RemoveWindowSubclass(itr->first, TabCtrlProc, (UINT_PTR)TabCtrlProc);
 					}
 					itr = g_umDlgProc.erase(itr);
@@ -407,15 +405,16 @@ extern "C" LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 		if (g_bDarkMode) {
 			CHAR pszClassA[MAX_CLASS_NAME];
 			switch (msg) {
+			case WM_CTLCOLORBTN:
 			case WM_CTLCOLORSTATIC:
 				SetTextColor((HDC)wParam, TECL_DARKTEXT);
-				//SetBkColor((HDC)wParam, TECL_DARKBG);
-				SetBkMode((HDC)wParam, TRANSPARENT);
+				SetBkColor((HDC)wParam, TECL_DARKBG);
+//				SetBkMode((HDC)wParam, TRANSPARENT);
 				return (LRESULT)g_hbrDarkBackground;
 			case WM_CTLCOLORLISTBOX://Combobox
 			case WM_CTLCOLOREDIT:
 				SetTextColor((HDC)wParam, TECL_DARKTEXT);
-				SetBkMode((HDC)wParam, TRANSPARENT);
+				SetBkColor((HDC)wParam, TECL_DARKBG);
 				return (LRESULT)GetStockObject(BLACK_BRUSH);
 			case WM_ERASEBKGND:
 				RECT rc;
@@ -576,10 +575,9 @@ LRESULT CALLBACK CBTProc(int nCode, WPARAM wParam, LPARAM lParam)
 	if (nCode == HCBT_CREATEWND) {
 		HWND hwnd = (HWND)wParam;
 		GetClassNameA(hwnd, pszClassA, MAX_CLASS_NAME);
-		if (!lstrcmpA(pszClassA, "#32770")) {
-			FixWindow((HWND)wParam, NULL, NULL, 0);
-		}
-		if (!lstrcmpA(pszClassA, TOOLTIPS_CLASSA)) {
+		if (PathMatchSpecA(pszClassA, "#32770")) {
+			FixWindow(hwnd, NULL, NULL, 0);
+		} else if (!lstrcmpA(pszClassA, TOOLTIPS_CLASSA)) {
 			if (g_bTooltips) {
 				SetWindowTheme(hwnd, g_bDarkMode ? L"darkmode_explorer" : L"explorer", NULL);
 			}
@@ -587,13 +585,23 @@ LRESULT CALLBACK CBTProc(int nCode, WPARAM wParam, LPARAM lParam)
 	} else if (nCode == HCBT_DESTROYWND) {
 		UndoWindow((HWND)wParam, NULL, NULL, 0);
 	} else if (nCode == HCBT_ACTIVATE) {
-		if (g_bTooltips) {
-			HWND hwnd = (HWND)wParam;
-			GetClassNameA(hwnd, pszClassA, MAX_CLASS_NAME);
-			if (!lstrcmpA(pszClassA, TOOLTIPS_CLASSA)) {
+		HWND hwnd = (HWND)wParam;
+		GetClassNameA(hwnd, pszClassA, MAX_CLASS_NAME);
+		if (!lstrcmpA(pszClassA, TOOLTIPS_CLASSA)) {
+			if (g_bTooltips) {
 				SetWindowTheme(hwnd, g_bDarkMode ? L"darkmode_explorer" : L"explorer", NULL);
 			}
 		}
+#ifdef USE_VCL
+		else if (PathMatchSpecA(pszClassA, "T*Form")) {//VCL
+			auto itr = g_umHook.find(hwnd);
+			if (itr == g_umHook.end()) {
+				g_umHook[hwnd] = 1;
+				FixWindow1(hwnd);
+				SetWindowSubclass(hwnd, DialogProc, (UINT_PTR)DialogProc, 0);
+			}
+		}
+#endif
 	}
 	auto itr = g_umCBTHook.find(GetCurrentThreadId());
 	return itr != g_umCBTHook.end() ? CallNextHookEx(itr->second, nCode, wParam, lParam) : 0;
@@ -652,9 +660,9 @@ BOOL APIENTRY DllMain( HMODULE hModule,
 		for (auto itr = g_umDlgProc.begin(); itr != g_umDlgProc.end(); ++itr) {
 			CHAR pszClassA[MAX_CLASS_NAME];
 			GetClassNameA(itr->first, pszClassA, MAX_CLASS_NAME);
-			if (lstrcmpiA(pszClassA, WC_LISTVIEWA) == 0) {
+			if (::PathMatchSpecA(pszClassA, TWC_LISTVIEW)) {
 				RemoveWindowSubclass(itr->first, ListViewProc, (UINT_PTR)ListViewProc);
-			} else if (lstrcmpiA(pszClassA, WC_TABCONTROLA) == 0) {
+			} else if (::PathMatchSpecA(pszClassA, TWC_TABCONTROL)) {
 				RemoveWindowSubclass(itr->first, TabCtrlProc, (UINT_PTR)TabCtrlProc);
 			}
 		}
@@ -687,13 +695,13 @@ extern "C" int __stdcall GetPluginInfo(int infono, LPSTR buf, int buflen)
 		StrCpyNA(buf, "00IN", buflen);
 		break;
 	case 1:
-		StrCpyNA(buf, "Tablacus dark", buflen);
+		StrCpyNA(buf, "Tablacus Dark", buflen);
 		break;
 	case 2:
 		StrCpyNA(buf, "*.TDM", buflen);
 		break;
 	case 3:
-		StrCpyNA(buf, "Tablacus dark", buflen);
+		StrCpyNA(buf, "Tablacus Dark", buflen);
 		break;
 	default:
 		buf[0] = NULL;
@@ -734,6 +742,63 @@ extern "C" int __stdcall ConfigurationDlg(HWND parent, int fnc)
 {
 	DLLEXPORT;
 
-	MessageBox(parent, L"Tablacus Dark", L"Talacus Dark", MB_OK);
+	MessageBox(parent, _T(PRODUCTNAME), _T(PRODUCTNAME), MB_OK);
 	return 0;
+}
+
+//Mery plug-in
+
+extern "C" void WINAPI OnCommand(HWND hwnd)
+{
+	DLLEXPORT;
+}
+
+extern "C" BOOL WINAPI QueryStatus(HWND hwnd, LPBOOL pbChecked)
+{
+	DLLEXPORT;
+
+	return true;
+}
+
+extern "C" UINT WINAPI GetMenuTextID() {
+	DLLEXPORT;
+
+	return IDS_TEXT;
+}
+
+extern "C" UINT WINAPI GetStatusMessageID()
+{
+	DLLEXPORT;
+
+	return IDS_TEXT;
+}
+
+extern "C" UINT WINAPI GetIconID()
+{
+	DLLEXPORT;
+
+	return 0;
+}
+
+extern "C" void WINAPI OnEvents(HWND hwnd, UINT nEvent, LPARAM lParam)
+{
+	DLLEXPORT;
+
+}
+
+extern "C" LRESULT WINAPI PluginProc(HWND hwnd, UINT nMsg, WPARAM wParam, LPARAM lParam)
+{
+	DLLEXPORT;
+
+	if (lParam) {
+		switch (nMsg) {
+		case WM_USER + 0x0500 + 2:
+			lstrcpynW(LPWSTR(lParam), L"Tablacus Dark", wParam);
+			return lstrlen(LPWSTR(lParam));
+		case WM_USER + 0x0500 + 3:
+			swprintf_s(LPWSTR(lParam), wParam, L"%d.%d.%d", VER_Y, VER_M, VER_D);
+			return lstrlen(LPWSTR(lParam));
+		}
+	}
+	return	0;
 }
