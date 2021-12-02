@@ -19,31 +19,31 @@ LoadLibraryするだけで クラス名が「#32770」のダイアログが以�
 
 MessageBox
 
-![image](https://user-images.githubusercontent.com/5156977/143683851-b7677f45-d6ae-4c10-b7c4-2ae5475cadeb.png)
+![image](https://user-images.githubusercontent.com/5156977/144431074-c802a291-161b-43ad-8d5a-9c08756c01eb.png)
 
 ChooseFont
 
-![image](https://user-images.githubusercontent.com/5156977/143683888-230f267c-36f1-44ac-8a68-02b78b520aed.png)
+![image](https://user-images.githubusercontent.com/5156977/144431151-4a0afd6b-84da-492e-8749-1da086a59b64.png)
 
 ChooseColor
 
-![image](https://user-images.githubusercontent.com/5156977/143683920-4bc96a6f-74eb-4e9b-9c90-0d61214e87c8.png)
+![image](https://user-images.githubusercontent.com/5156977/144432854-43e7c70e-abe9-4cf7-9a01-088d1afd1228.png)
 
 SHBrowseForFolder
 
-![image](https://user-images.githubusercontent.com/5156977/143683974-ccef60da-ec46-4298-a86a-f28802d51f67.png)
+![image](https://user-images.githubusercontent.com/5156977/144431282-3e61237a-b829-44e1-82dd-9284fc4fafee.png)
 
 SHRunDialog
 
-![image](https://user-images.githubusercontent.com/5156977/143684001-658c5380-1455-4882-8657-ac9693d1f853.png)
+![image](https://user-images.githubusercontent.com/5156977/144431307-495363c0-c070-4804-aec5-1101258d40f3.png)
 
 ShellAbout
 
-![image](https://user-images.githubusercontent.com/5156977/143684102-82c16e53-a847-456f-bece-ee957a9660b4.png)
+![image](https://user-images.githubusercontent.com/5156977/144431454-8b1add4f-7076-4596-aecd-50d00c931437.png)
 
 Property
 
-![image](https://user-images.githubusercontent.com/5156977/143871906-2452a75b-f83e-434a-a9c0-c9b2f836631b.png)
+![image](https://user-images.githubusercontent.com/5156977/144431561-7af80eb0-dc55-48ca-a7ad-c1eb0137da3c.png)
 
 [サンプル実行ファイル](https://github.com/tablacus/TablacusDark/tree/main/test_exe)
 
@@ -110,4 +110,15 @@ _FixWindow(hWnd, NULL, NULL, 1);
 					
 詳しくは[サンプルプログラム](https://github.com/tablacus/TablacusDark/tree/main/test_exe)のソースをご覧ください。
 
+---
 
+## おまけ
+
+### Meryのプラグインとして使う事もできます。
+[Mery](https://www.haijin-boys.com/wiki/%E3%83%A1%E3%82%A4%E3%83%B3%E3%83%9A%E3%83%BC%E3%82%B8)のPluginsフォルダにコピーすると標準ダイアログがダークモード化します。
+Meryはすでにダークモードされているので、変更をせずに保存するか確認するダイアログがダークモード化される位です。
+
+![image](https://user-images.githubusercontent.com/5156977/144430605-c025a0cb-84c3-4815-a55b-ffc663046541.png)
+
+### Susie Plug-in
+拡張子を32ビット版はspiに、64ビット版はsphに変更するとSusie Plug-inに偽装することもできます。
