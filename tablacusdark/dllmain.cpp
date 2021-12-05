@@ -64,6 +64,7 @@ std::unordered_map<HWND, int> g_umHook;
 std::unordered_map<DWORD, HHOOK> g_umCBTHook;
 std::unordered_map<HWND, HWND> g_umSetTheme;
 std::unordered_map<HWND, HWND> g_umDlgProc;
+std::unordered_map<HBITMAP, HWND> g_umBitmap;
 
 HBRUSH	g_hbrDarkBackground;
 
@@ -78,7 +79,32 @@ BOOL IsHighContrast()
 	return SystemParametersInfo(SPI_GETHIGHCONTRAST, sizeof(highContrast), &highContrast, FALSE) && (highContrast.dwFlags & HCF_HIGHCONTRASTON);
 }
 
-extern "C" void CALLBACK GetDarkMode(HWND hWnd, HINSTANCE hInstance, PBOOL bDarkMode, int nCmdShow)
+#ifdef _DEBUG
+#pragma comment(lib, "version.lib")
+int GetComctl32Version()
+{
+	int nVer = 0;
+	DWORD dwLen;
+	DWORD dwHandle;
+	CHAR pszPathA[] = "comctl32.dll";
+	if (dwLen = ::GetFileVersionInfoSizeA(pszPathA, &dwHandle)) {
+		char *lpData = new char[dwLen + 1];
+		if (lpData) {
+			if (::GetFileVersionInfoA(pszPathA, 0, dwLen, lpData)) {
+				UINT nLen;
+				VS_FIXEDFILEINFO* pv;
+				if (::VerQueryValueA(lpData, "\\", (void **)&pv, &nLen)) {
+					nVer = HIWORD(pv->dwFileVersionMS);
+				}
+			}
+			delete [] lpData;
+		}
+	}
+	return nVer;
+}
+#endif
+
+EXTERN_C void CALLBACK GetDarkMode(HWND hWnd, HINSTANCE hInstance, PBOOL bDarkMode, int nCmdShow)
 {
 	DLLEXPORT;
 
@@ -111,7 +137,7 @@ void CALLBACK SetDarkMode(HWND hwnd, HINSTANCE hInstance, LPWSTR lpCmdLine, int 
 	}
 }
 
-extern "C" LRESULT CALLBACK ListViewProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
+EXTERN_C LRESULT CALLBACK ListViewProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
 {
 	DLLEXPORT;
 
@@ -183,7 +209,7 @@ LRESULT CALLBACK ButtonProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, U
 }
 */
 
-extern "C" LRESULT CALLBACK TabCtrlProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
+EXTERN_C LRESULT CALLBACK TabCtrlProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
 {
 	DLLEXPORT;
 
@@ -250,7 +276,7 @@ extern "C" LRESULT CALLBACK TabCtrlProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 	return DefSubclassProc(hwnd, msg, wParam, lParam);
 }
 
-extern "C" void CALLBACK FixChildren(HWND hwnd, HINSTANCE hInstance, LPWSTR lpCmdLine, int nCmdShow)
+EXTERN_C void CALLBACK FixChildren(HWND hwnd, HINSTANCE hInstance, LPWSTR lpCmdLine, int nCmdShow)
 {
 	DLLEXPORT;
 
@@ -293,12 +319,9 @@ extern "C" void CALLBACK FixChildren(HWND hwnd, HINSTANCE hInstance, LPWSTR lpCm
 								::ReleaseDC(hwnd1, hdc);
 								::SetWindowLong(hwnd1, GWL_STYLE, (dwStyle | BS_BITMAP));
 								::SendMessage(hwnd1, BM_SETIMAGE, IMAGE_BITMAP, (LPARAM)hBM);
-								::DeleteObject(hBM);
 								::SysFreeString(bs);
-								auto itr = g_umDlgProc.find(hwnd1);
-								if (itr == g_umDlgProc.end()) {
-									g_umDlgProc[hwnd1] = hwnd;
-								}
+								g_umDlgProc.try_emplace(hwnd1, hwnd);
+								g_umBitmap.try_emplace(hBM, hwnd);
 							}
 						}
 					}
@@ -356,7 +379,7 @@ VOID FixWindow1(HWND hwnd) {
 	::RedrawWindow(hwnd, NULL, NULL, RDW_INVALIDATE | RDW_ALLCHILDREN);
 }
 
-extern "C" LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
+EXTERN_C LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
 {
 	DLLEXPORT;
 
@@ -396,6 +419,14 @@ extern "C" LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 						RemoveWindowSubclass(itr->first, TabCtrlProc, (UINT_PTR)TabCtrlProc);
 					}
 					itr = g_umDlgProc.erase(itr);
+				} else {
+					++itr;
+				}
+			}
+			for (auto itr = g_umBitmap.begin(); itr != g_umBitmap.end();) {
+				if (hwnd == itr->second) {
+					DeleteObject(itr->first);
+					itr = g_umBitmap.erase(itr);
 				} else {
 					++itr;
 				}
@@ -527,7 +558,7 @@ extern "C" LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 	return DefSubclassProc(hwnd, msg, wParam, lParam);
 }
 
-extern "C" void CALLBACK FixWindow(HWND hwnd, HINSTANCE hInstance, LPWSTR lpCmdLine, int nCmdShow)
+EXTERN_C void CALLBACK FixWindow(HWND hwnd, HINSTANCE hInstance, LPWSTR lpCmdLine, int nCmdShow)
 {
 	DLLEXPORT;
 
@@ -539,7 +570,7 @@ extern "C" void CALLBACK FixWindow(HWND hwnd, HINSTANCE hInstance, LPWSTR lpCmdL
 	}
 }
 
-extern "C" void CALLBACK UndoWindow(HWND hwnd, HINSTANCE hInstance, LPWSTR lpCmdLine, int nCmdShow)
+EXTERN_C void CALLBACK UndoWindow(HWND hwnd, HINSTANCE hInstance, LPWSTR lpCmdLine, int nCmdShow)
 {
 	DLLEXPORT;
 	auto itr = g_umHook.find(hwnd);
@@ -551,7 +582,7 @@ extern "C" void CALLBACK UndoWindow(HWND hwnd, HINSTANCE hInstance, LPWSTR lpCmd
 	}
 }
 
-extern "C" void CALLBACK SetAppMode(HWND hwnd, HINSTANCE hInstance, LPWSTR lpCmdLine, int nCmdShow)
+EXTERN_C void CALLBACK SetAppMode(HWND hwnd, HINSTANCE hInstance, LPWSTR lpCmdLine, int nCmdShow)
 {
 	DLLEXPORT;
 
@@ -613,6 +644,7 @@ BOOL APIENTRY DllMain( HMODULE hModule,
 )
 {
 	HMODULE hDll;
+	DWORD dwThreadId = GetCurrentThreadId();
 	switch (ul_reason_for_call)
 	{
 	case DLL_PROCESS_ATTACH:
@@ -639,17 +671,11 @@ BOOL APIENTRY DllMain( HMODULE hModule,
 			g_hbrDarkBackground = CreateSolidBrush(TECL_DARKBG);
 		}
 	case DLL_THREAD_ATTACH:
-		{
-			DWORD dwThreadId = GetCurrentThreadId();
-			auto itr = g_umCBTHook.find(dwThreadId);
-			if (itr == g_umCBTHook.end()) {
-				g_umCBTHook[dwThreadId] = SetWindowsHookEx(WH_CBT, (HOOKPROC)CBTProc, NULL, dwThreadId);
-			}
-		}
+		g_umCBTHook.try_emplace(dwThreadId, SetWindowsHookEx(WH_CBT, (HOOKPROC)CBTProc, NULL, dwThreadId));
 		break;
 	case DLL_THREAD_DETACH:
 		{
-			auto itr = g_umCBTHook.find(GetCurrentThreadId());
+			auto itr = g_umCBTHook.find(dwThreadId);
 			if (itr != g_umCBTHook.end()) {
 				UnhookWindowsHookEx(itr->second);
 				g_umCBTHook.erase(itr);
@@ -686,7 +712,7 @@ BOOL APIENTRY DllMain( HMODULE hModule,
 }
 
 //Susie Plug-in
-extern "C" int __stdcall GetPluginInfo(int infono, LPSTR buf, int buflen)
+EXTERN_C int __stdcall GetPluginInfo(int infono, LPSTR buf, int buflen)
 {
 	DLLEXPORT;
 
@@ -710,35 +736,35 @@ extern "C" int __stdcall GetPluginInfo(int infono, LPSTR buf, int buflen)
 	return lstrlenA(buf);
 }
 
-extern "C" int __stdcall IsSupported(LPCSTR filename, void *dw)
+EXTERN_C int __stdcall IsSupported(LPCSTR filename, void *dw)
 {
 	DLLEXPORT;
 
 	return 0;
 }
 
-extern "C" int __stdcall GetPictureInfo(LPSTR buf, LONG_PTR len, unsigned int flag, void *lpInfo)
+EXTERN_C int __stdcall GetPictureInfo(LPSTR buf, LONG_PTR len, unsigned int flag, void *lpInfo)
 {
 	DLLEXPORT;
 
 	return -1;
 }
 
-extern "C" int __stdcall GetPicture(LPSTR buf, LONG_PTR len,unsigned int flag, HANDLE *pHBInfo, HANDLE *pHBm, FARPROC lpPrgressCallback, LONG_PTR lData)
+EXTERN_C int __stdcall GetPicture(LPSTR buf, LONG_PTR len,unsigned int flag, HANDLE *pHBInfo, HANDLE *pHBm, FARPROC lpPrgressCallback, LONG_PTR lData)
 {
 	DLLEXPORT;
 
 	return -1;
 }
 
-extern "C" int __stdcall GetPreview(LPSTR buf,LONG_PTR len,unsigned int flag, HANDLE *pHBInfo, HANDLE *pHBm, FARPROC lpPrgressCallback, LONG_PTR lData)
+EXTERN_C int __stdcall GetPreview(LPSTR buf,LONG_PTR len,unsigned int flag, HANDLE *pHBInfo, HANDLE *pHBm, FARPROC lpPrgressCallback, LONG_PTR lData)
 {
 	DLLEXPORT;
 
 	return -1;
 }
 
-extern "C" int __stdcall ConfigurationDlg(HWND parent, int fnc)
+EXTERN_C int __stdcall ConfigurationDlg(HWND parent, int fnc)
 {
 	DLLEXPORT;
 
@@ -748,52 +774,52 @@ extern "C" int __stdcall ConfigurationDlg(HWND parent, int fnc)
 
 //Mery plug-in
 
-extern "C" void WINAPI OnCommand(HWND hwnd)
+EXTERN_C void WINAPI OnCommand(HWND hwnd)
 {
 	DLLEXPORT;
 }
 
-extern "C" BOOL WINAPI QueryStatus(HWND hwnd, LPBOOL pbChecked)
+EXTERN_C BOOL WINAPI QueryStatus(HWND hwnd, LPBOOL pbChecked)
 {
 	DLLEXPORT;
 
 	return true;
 }
 
-extern "C" UINT WINAPI GetMenuTextID() {
+EXTERN_C UINT WINAPI GetMenuTextID() {
 	DLLEXPORT;
 
 	return IDS_TEXT;
 }
 
-extern "C" UINT WINAPI GetStatusMessageID()
+EXTERN_C UINT WINAPI GetStatusMessageID()
 {
 	DLLEXPORT;
 
 	return IDS_TEXT;
 }
 
-extern "C" UINT WINAPI GetIconID()
+EXTERN_C UINT WINAPI GetIconID()
 {
 	DLLEXPORT;
 
 	return 0;
 }
 
-extern "C" void WINAPI OnEvents(HWND hwnd, UINT nEvent, LPARAM lParam)
+EXTERN_C void WINAPI OnEvents(HWND hwnd, UINT nEvent, LPARAM lParam)
 {
 	DLLEXPORT;
 
 }
 
-extern "C" LRESULT WINAPI PluginProc(HWND hwnd, UINT nMsg, WPARAM wParam, LPARAM lParam)
+EXTERN_C LRESULT WINAPI PluginProc(HWND hwnd, UINT nMsg, WPARAM wParam, LPARAM lParam)
 {
 	DLLEXPORT;
 
 	if (lParam) {
 		switch (nMsg) {
 		case WM_USER + 0x0500 + 2:
-			lstrcpynW(LPWSTR(lParam), L"Tablacus Dark", wParam);
+			lstrcpynW(LPWSTR(lParam), L"Tablacus Dark", (int)wParam);
 			return lstrlen(LPWSTR(lParam));
 		case WM_USER + 0x0500 + 3:
 			swprintf_s(LPWSTR(lParam), wParam, L"%d.%d.%d", VER_Y, VER_M, VER_D);
