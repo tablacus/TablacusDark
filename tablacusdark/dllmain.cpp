@@ -62,9 +62,7 @@ LPFNDwmSetWindowAttribute _DwmSetWindowAttribute = NULL;
 
 std::unordered_map<HWND, int> g_umHook;
 std::unordered_map<DWORD, HHOOK> g_umCBTHook;
-std::unordered_map<HWND, HWND> g_umSetTheme;
 std::unordered_map<HWND, HWND> g_umDlgProc;
-std::unordered_map<HBITMAP, HWND> g_umBitmap;
 
 HBRUSH	g_hbrDarkBackground;
 
@@ -77,6 +75,62 @@ BOOL IsHighContrast()
 {
 	HIGHCONTRAST highContrast = { sizeof(HIGHCONTRAST) };
 	return SystemParametersInfo(SPI_GETHIGHCONTRAST, sizeof(highContrast), &highContrast, FALSE) && (highContrast.dwFlags & HCF_HIGHCONTRASTON);
+}
+
+BOOL IsClan(HWND hwndRoot, HWND hwnd)
+{
+	while (hwnd != hwndRoot) {
+		hwnd = GetParent(hwnd);
+		if (!hwnd) {
+			return FALSE;
+		}
+	}
+	return TRUE;
+}
+
+VOID teFixGroup(LPNMLVCUSTOMDRAW lplvcd, COLORREF clrBk)
+{
+	if (lplvcd->dwItemType == LVCDI_GROUP) { //Fix groups in dark background
+		if (lplvcd->nmcd.dwDrawStage == CDDS_PREPAINT) {
+			FillRect(lplvcd->nmcd.hdc, &lplvcd->rcText, GetStockBrush(WHITE_BRUSH));
+		} else if (lplvcd->nmcd.dwDrawStage == CDDS_POSTPAINT) {
+			int w = lplvcd->rcText.right - lplvcd->rcText.left;
+			int h = lplvcd->rcText.bottom - lplvcd->rcText.top;
+			BYTE r0 = GetRValue(clrBk);
+			BYTE g0 = GetGValue(clrBk);
+			BYTE b0 = GetBValue(clrBk);
+			BITMAPINFO bmi;
+			RGBQUAD *pcl = NULL;
+			::ZeroMemory(&bmi.bmiHeader, sizeof(BITMAPINFOHEADER));
+			bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+			bmi.bmiHeader.biWidth = w;
+			bmi.bmiHeader.biHeight = -(LONG)h;
+			bmi.bmiHeader.biPlanes = 1;
+			bmi.bmiHeader.biBitCount = 32;
+			HBITMAP hBM = CreateDIBSection(NULL, &bmi, DIB_RGB_COLORS, (void **)&pcl, NULL, 0);
+			HDC hmdc = CreateCompatibleDC(lplvcd->nmcd.hdc);
+			HGDIOBJ hOld = SelectObject(hmdc, hBM);
+			BitBlt(hmdc, 0, 0, w, h, lplvcd->nmcd.hdc, lplvcd->rcText.left, lplvcd->rcText.top, NOTSRCCOPY);
+			for (int i = w * h; --i >= 0; ++pcl) {
+				if (pcl->rgbRed || pcl->rgbGreen || pcl->rgbBlue) {
+					WORD cl = pcl->rgbRed > pcl->rgbGreen ? pcl->rgbRed : pcl->rgbGreen;
+					if (cl < pcl->rgbBlue) {
+						cl = pcl->rgbBlue;
+					}
+					cl += 48;
+					pcl->rgbRed = pcl->rgbGreen = pcl->rgbBlue = cl > 0xff ? 0xff : cl;
+				} else {
+					pcl->rgbRed = r0;
+					pcl->rgbGreen = g0;
+					pcl->rgbBlue = b0;
+				}
+			}
+			BitBlt(lplvcd->nmcd.hdc, lplvcd->rcText.left, lplvcd->rcText.top, w, h, hmdc, 0, 0, SRCCOPY);
+			SelectObject(hmdc, hOld);
+			DeleteDC(hmdc);
+			DeleteObject(hBM);
+		}
+	}
 }
 
 #ifdef _DEBUG
@@ -321,14 +375,16 @@ EXTERN_C void CALLBACK FixChildren(HWND hwnd, HINSTANCE hInstance, LPWSTR lpCmdL
 								::SendMessage(hwnd1, BM_SETIMAGE, IMAGE_BITMAP, (LPARAM)hBM);
 								::SysFreeString(bs);
 								g_umDlgProc.try_emplace(hwnd1, hwnd);
-								g_umBitmap.try_emplace(hBM, hwnd);
 							}
 						}
 					}
 				} else {
 					auto itr = g_umDlgProc.find(hwnd1);
 					if (itr != g_umDlgProc.end()) {
-						::SendMessage(hwnd1, BM_SETIMAGE, IMAGE_BITMAP, NULL);
+						HBITMAP hBM = (HBITMAP)::SendMessage(hwnd1, BM_SETIMAGE, IMAGE_BITMAP, NULL);
+						if (hBM) {
+							::DeleteObject(hBM);
+						}
 						::SetWindowLong(hwnd1, GWL_STYLE, (dwStyle & ~BS_BITMAP));
 						g_umDlgProc.erase(itr);
 					}
@@ -343,7 +399,11 @@ EXTERN_C void CALLBACK FixChildren(HWND hwnd, HINSTANCE hInstance, LPWSTR lpCmdL
 			TreeView_SetTextColor(hwnd1, g_bDarkMode ? TECL_DARKTEXT : GetSysColor(COLOR_WINDOWTEXT));
 			TreeView_SetBkColor(hwnd1, g_bDarkMode ? TECL_DARKBG : GetSysColor(COLOR_WINDOW));
 		} else if (::PathMatchSpecA(pszClassA, TWC_LISTVIEW)) {
-			SetWindowTheme(hwnd1, g_bDarkMode ? L"darkmode_itemsview" : L"explorer", NULL);
+//			SetWindowTheme(hwnd1, g_bDarkMode ? L"darkmode_itemsview" : L"explorer", NULL);
+			if (_AllowDarkModeForWindow) {
+				_AllowDarkModeForWindow(hwnd1, g_bDarkMode);
+				SetWindowTheme(hwnd1, L"explorer", NULL);
+			}
 			ListView_SetTextColor(hwnd1, g_bDarkMode ? TECL_DARKTEXT : GetSysColor(COLOR_WINDOWTEXT));
 			ListView_SetTextBkColor(hwnd1, g_bDarkMode ? TECL_DARKBG : GetSysColor(COLOR_WINDOW));
 			ListView_SetBkColor(hwnd1, g_bDarkMode ? TECL_DARKBG : GetSysColor(COLOR_WINDOW));
@@ -394,41 +454,10 @@ EXTERN_C LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 			break;
 		case WM_CTLCOLORLISTBOX:
 			if (_AllowDarkModeForWindow) {
-				auto itr = g_umSetTheme.find((HWND)lParam);
-				if (itr == g_umSetTheme.end()) {
+				auto itr = g_umDlgProc.find((HWND)lParam);
+				if (itr == g_umDlgProc.end()) {
 					SetWindowTheme((HWND)lParam, g_bDarkMode ? L"darkmode_explorer" : L"explorer", NULL);
-					g_umSetTheme[(HWND)lParam] = hwnd;
-				}
-			}
-			break;
-		case WM_CLOSE:
-			for (auto itr = g_umSetTheme.begin(); itr != g_umSetTheme.end();) {
-				if (hwnd == itr->second) {
-					itr = g_umSetTheme.erase(itr);
-				} else {
-					++itr;
-				}
-			}
-			for (auto itr = g_umDlgProc.begin(); itr != g_umDlgProc.end();) {
-				if (hwnd == itr->second) {
-					CHAR pszClassA[MAX_CLASS_NAME];
-					GetClassNameA(itr->first, pszClassA, MAX_CLASS_NAME);
-					if (::PathMatchSpecA(pszClassA, TWC_LISTVIEW)) {
-						RemoveWindowSubclass(itr->first, ListViewProc, (UINT_PTR)ListViewProc);
-					} else if (::PathMatchSpecA(pszClassA, TWC_TABCONTROL)) {
-						RemoveWindowSubclass(itr->first, TabCtrlProc, (UINT_PTR)TabCtrlProc);
-					}
-					itr = g_umDlgProc.erase(itr);
-				} else {
-					++itr;
-				}
-			}
-			for (auto itr = g_umBitmap.begin(); itr != g_umBitmap.end();) {
-				if (hwnd == itr->second) {
-					DeleteObject(itr->first);
-					itr = g_umBitmap.erase(itr);
-				} else {
-					++itr;
+					g_umDlgProc[(HWND)lParam] = hwnd;
 				}
 			}
 			break;
@@ -467,21 +496,6 @@ EXTERN_C LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 					PAINTSTRUCT ps;
 					HDC hdc = BeginPaint(hwnd, &ps);
 					EndPaint(hwnd, &ps);
-				}
-				break;
-			case WM_NOTIFY:
-				if (((LPNMHDR)lParam)->code == NM_CUSTOMDRAW) {
-					if (g_bDarkMode) {
-						LPNMCUSTOMDRAW pnmcd = (LPNMCUSTOMDRAW)lParam;
-						if (pnmcd->dwDrawStage == CDDS_PREPAINT) {
-							return CDRF_NOTIFYITEMDRAW;
-						}
-						if (pnmcd->dwDrawStage == CDDS_ITEMPREPAINT) {
-							SetTextColor(pnmcd->hdc, TECL_DARKTEXT);
-							return CDRF_DODEFAULT;
-						}
-						DefSubclassProc(hwnd, LVM_SETSELECTEDCOLUMN, -1, 0);
-					}
 				}
 				break;
 			case WM_DRAWITEM:
@@ -552,6 +566,29 @@ EXTERN_C LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 					}
 				}
 				break;
+			case WM_NOTIFY:
+				LPNMHDR lpnmhdr;
+				lpnmhdr = (LPNMHDR)lParam;
+				if (lpnmhdr->code == NM_CUSTOMDRAW) {
+					LPNMLVCUSTOMDRAW lplvcd = (LPNMLVCUSTOMDRAW)lParam;
+					teFixGroup(lplvcd, TECL_DARKBG);
+					if (lplvcd->nmcd.dwDrawStage == CDDS_PREPAINT) {
+						return CDRF_NOTIFYITEMDRAW;
+					}
+					if (lplvcd->dwItemType != LVCDI_GROUP) {
+						if (lplvcd->nmcd.dwDrawStage == CDDS_ITEMPREPAINT) {
+							DWORD uState = ListView_GetItemState(lpnmhdr->hwndFrom, lplvcd->nmcd.dwItemSpec, LVIS_SELECTED);
+							if (uState & LVIS_SELECTED || lplvcd->nmcd.uItemState & CDIS_HOT) {
+								RECT rc;
+								ListView_GetItemRect(lpnmhdr->hwndFrom, lplvcd->nmcd.dwItemSpec, &rc, LVIR_SELECTBOUNDS);
+								::SetDCBrushColor(lplvcd->nmcd.hdc, TECL_DARKSEL);
+								::FillRect(lplvcd->nmcd.hdc, &rc, GetStockBrush(DC_BRUSH));
+							}
+							return CDRF_DODEFAULT;
+						}
+					}
+				}
+				break;
 			}
 		}
 	} catch (...) {}
@@ -573,6 +610,27 @@ EXTERN_C void CALLBACK FixWindow(HWND hwnd, HINSTANCE hInstance, LPWSTR lpCmdLin
 EXTERN_C void CALLBACK UndoWindow(HWND hwnd, HINSTANCE hInstance, LPWSTR lpCmdLine, int nCmdShow)
 {
 	DLLEXPORT;
+
+	for (auto itr = g_umDlgProc.begin(); itr != g_umDlgProc.end();) {
+		if (IsClan(hwnd, itr->second)) {
+			CHAR pszClassA[MAX_CLASS_NAME];
+			GetClassNameA(itr->first, pszClassA, MAX_CLASS_NAME);
+			if (::PathMatchSpecA(pszClassA, TWC_LISTVIEW)) {
+				RemoveWindowSubclass(itr->first, ListViewProc, (UINT_PTR)ListViewProc);
+			} else if (::PathMatchSpecA(pszClassA, TWC_TABCONTROL)) {
+				RemoveWindowSubclass(itr->first, TabCtrlProc, (UINT_PTR)TabCtrlProc);
+			} else if (::PathMatchSpecA(pszClassA, TWC_BUTTON)) {
+				HBITMAP hBM = (HBITMAP)::SendMessage(itr->first, BM_SETIMAGE, IMAGE_BITMAP, NULL);
+				if (hBM) {
+					::DeleteObject(hBM);
+				}
+			}
+
+			itr = g_umDlgProc.erase(itr);
+		} else {
+			++itr;
+		}
+	}
 	auto itr = g_umHook.find(hwnd);
 	if (itr != g_umHook.end()) {
 		if (itr->second == 1) {
