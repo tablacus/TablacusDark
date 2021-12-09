@@ -22,6 +22,7 @@
 #define TECL_DARKTEXT 0xffffff
 #define TECL_DARKTEXT2 0xe0e0e0
 #define TECL_DARKBG 0x202020
+#define TECL_DARKEDITBG 0x181818
 #define TECL_DARKSEL 0x606060
 #define TECL_DARKFRAME 0x909090
 
@@ -70,6 +71,7 @@ BOOL	g_bDarkMode = FALSE;
 BOOL	g_bTooltips = FALSE;
 BOOL	g_bFixOwnerDrawCB = TRUE;
 BOOL	g_bOwnerDrawTC = TRUE;
+BOOL	g_bOwnerDrawSB = TRUE;
 
 BOOL IsHighContrast()
 {
@@ -274,11 +276,11 @@ EXTERN_C LRESULT CALLBACK TabCtrlProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
 			WCHAR label[MAX_PATH];
 			HDC hdc = BeginPaint(hwnd, &ps);
 			DWORD dwStyle = GetWindowLong(hwnd, GWL_STYLE);
-			SetBkMode(ps.hdc, TRANSPARENT);
-			SetDCPenColor(ps.hdc, TECL_DARKSEL);
-			SelectObject(ps.hdc, GetStockPen(DC_PEN));
-			SelectObject(ps.hdc, g_hbrDarkBackground);
-			::FillRect(ps.hdc, &ps.rcPaint, g_hbrDarkBackground);
+			SetBkMode(hdc, TRANSPARENT);
+			SetDCPenColor(hdc, TECL_DARKSEL);
+			SelectObject(hdc, GetStockPen(DC_PEN));
+			SelectObject(hdc, g_hbrDarkBackground);
+			::FillRect(hdc, &ps.rcPaint, g_hbrDarkBackground);
 			HGDIOBJ hFont = (HGDIOBJ)::SendMessage(hwnd, WM_GETFONT, 0, 0);
 			::SelectObject(hdc, hFont);
 			int nSelected = TabCtrl_GetCurSel(hwnd);
@@ -298,9 +300,9 @@ EXTERN_C LRESULT CALLBACK TabCtrlProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
 				tci.cchTextMax = _countof(label) - 1;
 				TabCtrl_GetItem(hwnd, i, &tci);
 				if (i == nSelected) {
-					SetDCBrushColor(ps.hdc, TECL_DARKSEL);
-					::FillRect(ps.hdc, &rc, GetStockBrush(DC_BRUSH));
-					SetTextColor(ps.hdc, TECL_DARKTEXT);
+					SetDCBrushColor(hdc, TECL_DARKSEL);
+					::FillRect(hdc, &rc, GetStockBrush(DC_BRUSH));
+					SetTextColor(hdc, TECL_DARKTEXT);
 				} else {
 					if (!(dwStyle & (TCS_BUTTONS | TCS_FLATBUTTONS))) {
 						if (dwStyle & TCS_BOTTOM) {
@@ -310,20 +312,105 @@ EXTERN_C LRESULT CALLBACK TabCtrlProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
 						}
 					}
 					if (!(dwStyle & TCS_FLATBUTTONS)) {
-						Rectangle(ps.hdc, rc.left, rc.top, rc.right, rc.bottom);
+						Rectangle(hdc, rc.left, rc.top, rc.right, rc.bottom);
 					}
-					SetTextColor(ps.hdc, TECL_DARKTEXT2);
+					SetTextColor(hdc, TECL_DARKTEXT2);
 				}
 				if (tci.iImage >= 0) {
 					int x = rc.left + 6;
 					int y = rc.top + ((rc.bottom - rc.top) - cy) / 2;
-					ImageList_Draw(himl, tci.iImage, ps.hdc, x, y, ILD_TRANSPARENT);
+					ImageList_Draw(himl, tci.iImage, hdc, x, y, ILD_TRANSPARENT);
 					rc.left += cx + 3;
 				}
-				::DrawText(ps.hdc, label, -1, &rc, DT_HIDEPREFIX | DT_SINGLELINE | DT_VCENTER | DT_PATH_ELLIPSIS | DT_CENTER);
+				::DrawText(hdc, label, -1, &rc, DT_HIDEPREFIX | DT_SINGLELINE | DT_VCENTER | DT_PATH_ELLIPSIS | DT_CENTER);
 			}
 			EndPaint(hwnd, &ps);
 			return 0;
+		}
+	} catch (...) {
+	}
+	return DefSubclassProc(hwnd, msg, wParam, lParam);
+}
+
+EXTERN_C LRESULT CALLBACK StatusBarProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
+{
+	DLLEXPORT;
+
+	try {
+		if (g_bDarkMode) {
+			SetTextColor((HDC)wParam, TECL_DARKTEXT);
+			SetBkColor((HDC)wParam, TECL_DARKBG);
+			switch (msg) {
+			case WM_ERASEBKGND:
+				RECT rc;
+				GetClientRect(hwnd, &rc);
+				FillRect((HDC)wParam, &rc, g_hbrDarkBackground);
+				SetTextColor((HDC)wParam, TECL_DARKTEXT);
+				return 1;
+			case WM_PAINT:
+				PAINTSTRUCT ps;
+				HDC hdc = BeginPaint(hwnd, &ps);
+				HGDIOBJ hFont = (HGDIOBJ)::SendMessage(hwnd, WM_GETFONT, 0, 0);
+				::SelectObject(hdc, hFont);
+				SetTextColor(hdc, TECL_DARKTEXT);
+				SetBkColor(hdc, TECL_DARKBG);
+				SetDCPenColor(hdc, TECL_DARKFRAME);
+				SelectObject(hdc, GetStockPen(DC_PEN));
+				SelectObject(hdc, g_hbrDarkBackground);
+				for (int i = 0; i < 99; ++i) {
+					if (::SendMessage(hwnd, SB_GETRECT, i, (LPARAM)&rc)) {
+						DWORD dw = ::SendMessage(hwnd, SB_GETTEXTLENGTH, i, 0);
+						if (!(HIWORD(dw) & SBT_NOBORDERS)) {
+							MoveToEx(hdc, rc.right, rc.top, NULL);
+							LineTo(hdc, rc.right, rc.bottom);
+						}
+						rc.left += 4;
+						if (LOWORD(dw)) {
+							BSTR bs = ::SysAllocStringLen(NULL, LOWORD(dw));
+							::SendMessage(hwnd, SB_GETTEXT, i, (LPARAM)bs);
+							::DrawText(hdc, bs, -1, &rc, DT_SINGLELINE | DT_VCENTER);
+							::SysFreeString(bs);
+						}
+					} else {
+						break;
+					}
+				}
+				EndPaint(hwnd, &ps);
+				return 0;
+			}
+		}
+	} catch (...) {
+	}
+	return DefSubclassProc(hwnd, msg, wParam, lParam);
+}
+
+EXTERN_C LRESULT CALLBACK ComboBoxProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
+{
+	DLLEXPORT;
+
+	try {
+		if (msg == WM_CTLCOLORLISTBOX) {
+			if (_AllowDarkModeForWindow) {
+				auto itr = g_umDlgProc.find((HWND)lParam);
+				if (itr == g_umDlgProc.end()) {
+					SetWindowTheme((HWND)lParam, g_bDarkMode ? L"darkmode_explorer" : L"explorer", NULL);
+					g_umDlgProc[(HWND)lParam] = hwnd;
+				}
+			}
+		}
+		if (g_bDarkMode) {
+			switch (msg) {
+			case WM_CTLCOLORSTATIC:
+				SetTextColor((HDC)wParam, TECL_DARKTEXT);
+				SetBkColor((HDC)wParam, TECL_DARKBG);
+				return (LRESULT)g_hbrDarkBackground;
+			case WM_CTLCOLORLISTBOX://Combobox
+			case WM_CTLCOLOREDIT:
+				SetTextColor((HDC)wParam, TECL_DARKTEXT);
+				SetBkColor((HDC)wParam, TECL_DARKBG);
+				SetDCBrushColor((HDC)wParam, TECL_DARKEDITBG);
+				return (LRESULT)GetStockObject(DC_BRUSH);
+			}
 		}
 	} catch (...) {
 	}
@@ -390,8 +477,19 @@ EXTERN_C void CALLBACK FixChildren(HWND hwnd, HINSTANCE hInstance, LPWSTR lpCmdL
 					}
 				}
 			}
-		} else if (::PathMatchSpecA(pszClassA, TWC_EDIT ";" TWC_COMBOBOX)) {
+		} else if (::PathMatchSpecA(pszClassA, TWC_EDIT)) {
+			if (GetWindowLong(hwnd1, GWL_STYLE) & ES_MULTILINE) {
+				::SetWindowTheme(hwnd1, g_bDarkMode ? L"darkmode_explorer" : L"explorer", NULL);
+			} else {
+				::SetWindowTheme(hwnd1, g_bDarkMode ? L"darkmode_cfd" : L"cfd", NULL);
+			}
+		} else if (::PathMatchSpecA(pszClassA, TWC_COMBOBOX)) {
 			::SetWindowTheme(hwnd1, g_bDarkMode ? L"darkmode_cfd" : L"cfd", NULL);
+			auto itr = g_umDlgProc.find(hwnd1);
+			if (itr == g_umDlgProc.end()) {
+				SetWindowSubclass(hwnd1, ComboBoxProc, (UINT_PTR)ComboBoxProc, 0);
+				g_umDlgProc[hwnd1] = hwnd;
+			}
 		} else if (::PathMatchSpecA(pszClassA, WC_SCROLLBARA)) {
 			::SetWindowTheme(hwnd1, g_bDarkMode ? L"darkmode_explorer" : L"explorer", NULL);
 		} else if (::PathMatchSpecA(pszClassA, TWC_TREEVIEW)) {
@@ -400,6 +498,7 @@ EXTERN_C void CALLBACK FixChildren(HWND hwnd, HINSTANCE hInstance, LPWSTR lpCmdL
 			TreeView_SetBkColor(hwnd1, g_bDarkMode ? TECL_DARKBG : GetSysColor(COLOR_WINDOW));
 		} else if (::PathMatchSpecA(pszClassA, TWC_LISTVIEW)) {
 //			SetWindowTheme(hwnd1, g_bDarkMode ? L"darkmode_itemsview" : L"explorer", NULL);
+			ListView_SetExtendedListViewStyle(hwnd1, ListView_GetExtendedListViewStyle(hwnd1) | LVS_EX_DOUBLEBUFFER);
 			if (_AllowDarkModeForWindow) {
 				_AllowDarkModeForWindow(hwnd1, g_bDarkMode);
 				SetWindowTheme(hwnd1, L"explorer", NULL);
@@ -428,6 +527,16 @@ EXTERN_C void CALLBACK FixChildren(HWND hwnd, HINSTANCE hInstance, LPWSTR lpCmdL
 					g_umDlgProc[hwnd1] = hwnd;
 				}
 			}
+		} else if (::PathMatchSpecA(pszClassA, STATUSCLASSNAMEA)) {
+			if (g_bOwnerDrawSB && g_bDarkMode) {
+				::SetClassLongPtr(hwnd1, GCLP_HBRBACKGROUND, (LONG_PTR)g_hbrDarkBackground);
+				auto itr = g_umDlgProc.find(hwnd1);
+				if (itr == g_umDlgProc.end()) {
+					SetWindowSubclass(hwnd1, StatusBarProc, (UINT_PTR)StatusBarProc, 0);
+					g_umDlgProc[hwnd1] = hwnd;
+				}
+			} else {
+			}
 		}
 		FixChildren(hwnd1, hInstance, lpCmdLine, nCmdShow);
 	}
@@ -452,15 +561,6 @@ EXTERN_C LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 		case WM_NCPAINT:
 			FixChildren(hwnd, NULL, NULL, 0);
 			break;
-		case WM_CTLCOLORLISTBOX:
-			if (_AllowDarkModeForWindow) {
-				auto itr = g_umDlgProc.find((HWND)lParam);
-				if (itr == g_umDlgProc.end()) {
-					SetWindowTheme((HWND)lParam, g_bDarkMode ? L"darkmode_explorer" : L"explorer", NULL);
-					g_umDlgProc[(HWND)lParam] = hwnd;
-				}
-			}
-			break;
 		}
 		if (g_bDarkMode) {
 			CHAR pszClassA[MAX_CLASS_NAME];
@@ -475,7 +575,8 @@ EXTERN_C LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 			case WM_CTLCOLOREDIT:
 				SetTextColor((HDC)wParam, TECL_DARKTEXT);
 				SetBkColor((HDC)wParam, TECL_DARKBG);
-				return (LRESULT)GetStockObject(BLACK_BRUSH);
+				SetDCBrushColor((HDC)wParam, TECL_DARKEDITBG);
+				return (LRESULT)GetStockObject(DC_BRUSH);
 			case WM_ERASEBKGND:
 				RECT rc;
 				GetClientRect(hwnd, &rc);
@@ -586,6 +687,9 @@ EXTERN_C LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 							}
 							return CDRF_DODEFAULT;
 						}
+						if (lplvcd->nmcd.dwDrawStage == CDDS_ITEMPOSTPAINT) {
+							return CDRF_DODEFAULT;
+						}
 					}
 				}
 				break;
@@ -619,6 +723,10 @@ EXTERN_C void CALLBACK UndoWindow(HWND hwnd, HINSTANCE hInstance, LPWSTR lpCmdLi
 				RemoveWindowSubclass(itr->first, ListViewProc, (UINT_PTR)ListViewProc);
 			} else if (::PathMatchSpecA(pszClassA, TWC_TABCONTROL)) {
 				RemoveWindowSubclass(itr->first, TabCtrlProc, (UINT_PTR)TabCtrlProc);
+			} else if (::PathMatchSpecA(pszClassA, TWC_COMBOBOX)) {
+				RemoveWindowSubclass(itr->first, ComboBoxProc, (UINT_PTR)ComboBoxProc);
+			} else if (::PathMatchSpecA(pszClassA, STATUSCLASSNAMEA)) {
+				RemoveWindowSubclass(itr->first, StatusBarProc, (UINT_PTR)StatusBarProc);
 			} else if (::PathMatchSpecA(pszClassA, TWC_BUTTON)) {
 				HBITMAP hBM = (HBITMAP)::SendMessage(itr->first, BM_SETIMAGE, IMAGE_BITMAP, NULL);
 				if (hBM) {
@@ -656,6 +764,7 @@ EXTERN_C void CALLBACK SetAppMode(HWND hwnd, HINSTANCE hInstance, LPWSTR lpCmdLi
 	g_bTooltips = nCmdShow & 2;
 	g_bFixOwnerDrawCB = nCmdShow & 4;
 	g_bOwnerDrawTC = nCmdShow & 0x10;
+	g_bOwnerDrawSB = nCmdShow & 0x20;
 }
 
 LRESULT CALLBACK CBTProc(int nCode, WPARAM wParam, LPARAM lParam)
@@ -748,6 +857,10 @@ BOOL APIENTRY DllMain( HMODULE hModule,
 				RemoveWindowSubclass(itr->first, ListViewProc, (UINT_PTR)ListViewProc);
 			} else if (::PathMatchSpecA(pszClassA, TWC_TABCONTROL)) {
 				RemoveWindowSubclass(itr->first, TabCtrlProc, (UINT_PTR)TabCtrlProc);
+			} else if (::PathMatchSpecA(pszClassA, TWC_COMBOBOX)) {
+				RemoveWindowSubclass(itr->first, ComboBoxProc, (UINT_PTR)ComboBoxProc);
+			} else if (::PathMatchSpecA(pszClassA, STATUSCLASSNAMEA)) {
+				RemoveWindowSubclass(itr->first, StatusBarProc, (UINT_PTR)StatusBarProc);
 			}
 		}
 		g_umDlgProc.clear();
