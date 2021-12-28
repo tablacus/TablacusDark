@@ -5,7 +5,7 @@
 #define STRING2(str) #str
 #define VER_Y		21
 #define VER_M		12
-#define VER_D		9
+#define VER_D		28
 #define VER_Z		0
 #define IDS_TEXT 1
 

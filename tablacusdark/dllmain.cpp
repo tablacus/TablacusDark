@@ -199,6 +199,12 @@ EXTERN_C LRESULT CALLBACK ListViewProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
 
 	try {
 		switch (msg) {
+		case WM_ERASEBKGND:
+			RECT rc;
+			GetClientRect(hwnd, &rc);
+			FillRect((HDC)wParam, &rc, g_hbrDarkBackground);
+			SetTextColor((HDC)wParam, TECL_DARKTEXT);
+			return 1;
 		case LVM_SETSELECTEDCOLUMN:
 			if (g_bDarkMode) {
 				wParam = -1;
@@ -583,20 +589,21 @@ EXTERN_C LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 				FillRect((HDC)wParam, &rc, g_hbrDarkBackground);
 				return 1;
 			case WM_PAINT:
-				HWND hwndChild;
-				hwndChild = NULL;
-				BOOL bHandle;
-				bHandle = TRUE;
-				while (hwndChild = FindWindowEx(hwnd, hwndChild, NULL, NULL)) {
-					GetClassNameA(hwndChild, pszClassA, MAX_CLASS_NAME);
-					if (bHandle && !PathMatchSpecA(pszClassA, WC_STATICA ";" WC_BUTTONA ";" WC_COMBOBOXA)) {
-						bHandle = FALSE;
+				GetClassNameA(hwnd, pszClassA, MAX_CLASS_NAME);
+				if (PathMatchSpecA(pszClassA, "#32770")) {
+					HWND hwndChild = NULL;
+					BOOL bHandle = TRUE;
+					while (hwndChild = FindWindowEx(hwnd, hwndChild, NULL, NULL)) {
+						GetClassNameA(hwndChild, pszClassA, MAX_CLASS_NAME);
+						if (bHandle && !PathMatchSpecA(pszClassA, WC_STATICA ";" WC_BUTTONA ";" WC_COMBOBOXA)) {
+							bHandle = FALSE;
+						}
 					}
-				}
-				if (bHandle) {
-					PAINTSTRUCT ps;
-					HDC hdc = BeginPaint(hwnd, &ps);
-					EndPaint(hwnd, &ps);
+					if (bHandle) {
+						PAINTSTRUCT ps;
+						HDC hdc = BeginPaint(hwnd, &ps);
+						EndPaint(hwnd, &ps);
+					}
 				}
 				break;
 			case WM_DRAWITEM:
